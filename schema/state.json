@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "State",
+  "type": "object",
+  "required": [
+    "campaign_names"
+  ],
+  "properties": {
+    "campaign_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
