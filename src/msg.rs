@@ -15,11 +15,11 @@ pub enum HandleMsg {
     },
     Donate {
         name: String,
-        amount: u8
+        amount: u32
     },
     Withdraw {
         name: String,
-        amount: u8
+        amount: u32
     },
 }
 
@@ -44,12 +44,12 @@ pub enum HandleAnswer {
     /// Return a status message and campaign amount after donation
     Donate {
         status: String,
-        new_value: u8,
+        new_value: u32,
     },
     /// Return a status message and campaign amount after withdraw
     Withdraw {
         status: String,
-        new_value: u8,
+        new_value: u32,
     }
 }
 
@@ -64,6 +64,6 @@ pub enum QueryAnswer {
     Campaign {
         owner: String,
         description: String,
-        amount: u8,
+        amount: u32,
     }
 }
