@@ -29,8 +29,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     match msg {
         HandleMsg::Create {name, description} => try_create(deps, env, name, description),
-        HandleMsg::Donate {name, amount} => try_donate(deps, env, name, amount),
-        HandleMsg::Withdraw { name, amount } => try_withdraw(deps, env, name, amount),
+        HandleMsg::Donate {name} => try_donate(deps, env, name),
+        HandleMsg::Withdraw { name, amount } => try_withdraw(deps, env, name, amount.into()),
     }
 }
 
@@ -52,7 +52,7 @@ pub fn try_create<S: Storage, A: Api, Q: Querier>(
     let stored_campaign = Campaign {
         owner: sender_address.to_string(),
         description: desc,
-        amount: 0_u32,
+        amount: "0".to_string(),
     };
 
     save(&mut deps.storage, name.as_bytes(), &stored_campaign)?;
@@ -71,20 +71,29 @@ pub fn try_donate<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     name: String,
-    amount: u32,
 ) -> StdResult<HandleResponse> {
     let status: String;
-    let new_value: u32;
+    let status_value: String;
+    let mut new_value: u128;
 
     // read the campaign from storage
     let result: Option<Campaign> = may_load(&mut deps.storage, name.as_bytes()).ok().unwrap();
     match result {
         // set all response field values
         Some(mut stored_campaign) => {
-            status = String::from("Campaign found! Donnation sent!");
-            new_value = stored_campaign.amount + amount;
-            stored_campaign.amount = new_value;
-            save(&mut deps.storage, name.as_bytes(), &stored_campaign)?;
+            if env.message.sent_funds.len() != 1
+                || env.message.sent_funds[0].amount
+                < Uint128(1_000 /* 1mn uscrt = 1 SCRT */)
+                || env.message.sent_funds[0].denom != String::from("uscrt") {
+                return Err(StdError::generic_err( "Please donate at least 0,001 SCRT."));
+            } else {
+                new_value = stored_campaign.amount.parse::<u128>().unwrap();
+                new_value += env.message.sent_funds[0].amount.u128();
+                stored_campaign.amount = new_value.to_string();
+                save(&mut deps.storage, name.as_bytes(), &stored_campaign)?;
+                status_value = stored_campaign.amount;
+                status = String::from("Campaign found! Donation sent!");
+            }
         }
         // unless there's an error
         None => {
@@ -93,15 +102,11 @@ pub fn try_donate<S: Storage, A: Api, Q: Querier>(
     }
     debug_print("donate successfully");
     Ok(HandleResponse {
-        messages: vec![CosmosMsg::Bank(BankMsg::Send {
-            from_address: env.message.sender,
-            to_address: env.contract.address,
-            amount: vec![Coin::new(1_000_000, "uscrt")], // 1mn uscrt = 1 SCRT
-        })],
+        messages: vec![],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Donate {
             status,
-            new_value,
+            status_value,
         })?),
     })
 }
@@ -110,50 +115,45 @@ pub fn try_withdraw<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
     name: String,
-    amount: u32,
+    amount: u128,
 ) -> StdResult<HandleResponse> {
     let status: String;
-    let new_value: u32;
-
+    let new_value: u128;
+    let status_value: String;
     // read the campaign from storage
     let result: Option<Campaign> = may_load(&mut deps.storage, name.as_bytes()).ok().unwrap();
-    let mut response: HandleResponse = Default::default();
     match result {
         // set all response field values
         Some(mut stored_campaign) => {
-            let sender_address = env.message.sender;
-            if stored_campaign.owner.eq(&sender_address.to_string()) {
-                response.messages = vec![CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address,
-                    to_address: sender_address,
-                    amount: vec![Coin {
-                        denom: "uscrt".into(),
-                        amount: Uint128(amount.into()),
-                    }]
-                })];
-
+            if stored_campaign.owner.eq(&env.message.sender.to_string()) {
                 status = String::from("Campaign found! Withdraw permitted and executed!");
-                new_value = stored_campaign.amount - amount;
-                stored_campaign.amount = new_value;
+                new_value = stored_campaign.amount.parse::<u128>().unwrap() - amount;
+                stored_campaign.amount = new_value.to_string();
                 save(&mut deps.storage, name.as_bytes(), &stored_campaign)?;
+                status_value = stored_campaign.amount;
             } else {
-                status = String::from("Campaign found! Only campaign creator can withdraw!");
-                new_value = 0;
+                return Err(StdError::generic_err("Campaign found! Only campaign creator can withdraw!"));
             }
         }
         // unless there's an error
         None => {
-            new_value = 0;
-            status = String::from("Campaign not found.");
+            return Err(StdError::generic_err("Campaign not found."));
         }
     }
     debug_print("withdraw successfully");
     Ok(HandleResponse {
-        messages: response.messages,
+        messages: vec![CosmosMsg::Bank(BankMsg::Send {
+                from_address: env.contract.address,
+                to_address: env.message.sender,
+                amount: vec![Coin {
+                    denom: "uscrt".into(),
+                    amount: Uint128(amount.into()),
+                }]
+            })],
         log: vec![],
         data: Some(to_binary(&HandleAnswer::Withdraw {
             status,
-            new_value,
+            status_value,
         })?),
     })
 }

@@ -17,7 +17,7 @@ pub struct State {
 pub struct Campaign {
     pub owner: String,
     pub description: String,
-    pub amount: u32,
+    pub amount: String,
 }
 
 pub fn config<S: Storage>(storage: &mut S) -> Singleton<S, State> {
